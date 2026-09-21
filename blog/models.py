@@ -24,6 +24,7 @@ class Post(models.Model):
 	content = models.TextField()
 	author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
 	category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="posts")
+	image = models.ImageField(upload_to="posts/", blank=True, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 	is_published = models.BooleanField(default=False)
