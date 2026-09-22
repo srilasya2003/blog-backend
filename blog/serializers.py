@@ -4,7 +4,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Category, Post
+from .models import Category, Post, validate_image_file
 
 
 User = get_user_model()
@@ -31,6 +31,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
 	author = serializers.PrimaryKeyRelatedField(read_only=True)
+	image = serializers.ImageField(required=False, allow_null=True)
 
 	class Meta:
 		model = Post
@@ -47,5 +48,10 @@ class PostSerializer(serializers.ModelSerializer):
 			"is_published",
 		]
 		read_only_fields = ["id", "slug", "created_at", "updated_at"]
+
+	def validate_image(self, value):
+		if value is not None:
+			validate_image_file(value)
+		return value
 
 
