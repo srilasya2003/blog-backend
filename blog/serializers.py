@@ -3,11 +3,34 @@
 
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Category, Post, validate_image_file
 
 
 User = get_user_model()
+
+
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+	username_field = User.EMAIL_FIELD
+	email = serializers.EmailField()
+
+	def validate(self, attrs):
+		email = attrs["email"].strip()
+		user = User.objects.filter(email__iexact=email).first()
+
+		if user is None or not user.check_password(attrs["password"]):
+			raise AuthenticationFailed("Invalid email or password.")
+
+		if not user.is_active:
+			raise AuthenticationFailed("This account is inactive.")
+
+		refresh = self.get_token(user)
+		return {
+			"refresh": str(refresh),
+			"access": str(refresh.access_token),
+		}
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -18,8 +41,32 @@ class RegisterSerializer(serializers.ModelSerializer):
 		fields = ["id", "username", "email", "password"]
 		read_only_fields = ["id"]
 
+	def validate_username(self, value):
+		if User.objects.filter(username__iexact=value).exists():
+			raise serializers.ValidationError(
+				"This username is already registered. Please choose another."
+			)
+		return value
+
+	def validate_email(self, value):
+		if User.objects.filter(email__iexact=value).exists():
+			raise serializers.ValidationError(
+				"This email is already registered. Please try signing in."
+			)
+		return value
+
 	def create(self, validated_data):
 		return User.objects.create_user(**validated_data)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+	email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+	uid = serializers.CharField()
+	token = serializers.CharField()
+	new_password = serializers.CharField(write_only=True, min_length=8)
 
 
 class CategorySerializer(serializers.ModelSerializer):

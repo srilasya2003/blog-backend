@@ -108,28 +108,73 @@ POST /api/login/
 
 ```json
 {
-	"username": "srilasya",
+	"email": "user@example.com",
 	"password": "securepassword"
 }
 ```
 
-The response contains `access` and `refresh` tokens. Send the access token with protected requests:
+Login sets the one-hour access and refresh JWTs in `HttpOnly` cookies; it does not return tokens in the JSON body. JavaScript cannot read these cookies. The backend accepts the access cookie automatically on protected requests.
+
+Before login and before POST, PUT, PATCH, or DELETE requests, the frontend must obtain a CSRF cookie:
 
 ```text
-Authorization: Bearer <access-token>
+GET /api/csrf/
 ```
 
-Refresh an expired access token at:
+Send requests with credentials enabled. The CSRF endpoint returns a token for the `X-CSRFToken` header required on login and other unsafe requests. For example, with `fetch`:
+
+```javascript
+const csrfResponse = await fetch("http://localhost:8080/api/csrf/", {
+	credentials: "include",
+});
+const { csrfToken } = await csrfResponse.json();
+
+await fetch("http://localhost:8080/api/login/", {
+	method: "POST",
+	credentials: "include",
+	headers: {
+		"Content-Type": "application/json",
+		"X-CSRFToken": csrfToken,
+	},
+	body: JSON.stringify({ email, password }),
+});
+```
+
+Refresh the access cookie by POSTing to `/api/token/refresh/` with credentials and the `X-CSRFToken` header. POST to `/api/logout/` to clear both token cookies. Call `GET /api/csrf/` first if the CSRF cookie has not been set.
+
+During development (`DJANGO_DEBUG=True`), cookies are `HttpOnly` but not `Secure` so they work over local HTTP. Set `DJANGO_DEBUG=False` behind HTTPS in production; token cookies will then also use the `Secure` flag. After one hour, both tokens expire and the frontend should return to login when a protected endpoint responds with `401`. Public post and category reads remain available if an expired cookie is sent.
+
+### Forgot password
+
+Password reset does not require an access token. Submit the user's email address:
 
 ```text
-POST /api/login/refresh/
+POST /api/password-reset/
 ```
 
 ```json
 {
-	"refresh": "<refresh-token>"
+	"email": "user@example.com"
 }
 ```
+
+The email contains a link to `/reset-password/<uid>/<token>`. Submit those `uid` and `token` values with the new password to:
+
+```text
+POST /api/password-reset/confirm/
+```
+
+```json
+{
+	"uid": "<uid-from-link>",
+	"token": "<token-from-link>",
+	"new_password": "a-new-secure-password"
+}
+```
+
+Neither reset request requires a JWT. Runtime settings are loaded from the ignored `.env` file; `.env.example` lists the available options. To send reset messages to real inboxes using Gmail, enable 2-Step Verification on the sender account and create a Google App Password. Enter the sender account and App Password into `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` in `.env` (never commit the app password). Django automatically uses Gmail SMTP when both values are filled; otherwise it prints mail to the server console.
+
+Use the App Password, not the Gmail account's normal password. Restart the Django server after changing `.env`. After setup, submit `POST /api/password-reset/` again; check the Django server output for SMTP errors and check Gmail's Spam folder if it succeeds but does not appear in the inbox.
 
 ## Blog API
 
