@@ -56,6 +56,9 @@ class PostListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = Post.objects.select_related("author", "category")
+        if self.request.query_params.get("include_drafts") == "true":
+            return queryset.order_by("-created_at")
+
         if self.request.user.is_authenticated:
             queryset = queryset.filter(
                 models.Q(is_published=True) | models.Q(author=self.request.user)

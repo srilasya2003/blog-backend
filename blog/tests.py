@@ -66,6 +66,48 @@ class JWTSessionTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data[0]["id"], self.post.id)
 
+	def test_post_list_hides_other_users_drafts_by_default(self):
+		other_user = User.objects.create_user(
+			username="another-writer",
+			email="another@example.com",
+			password="test-password-123",
+		)
+		draft = Post.objects.create(
+			title="Private draft",
+			content="Draft content",
+			author=other_user,
+			category=self.category,
+			is_published=False,
+		)
+
+		response = self.client.get("/api/posts/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([post["id"] for post in response.data], [self.post.id])
+		self.assertNotIn(draft.id, [post["id"] for post in response.data])
+
+	def test_include_drafts_true_returns_all_posts_even_to_anonymous_users(self):
+		other_user = User.objects.create_user(
+			username="another-writer",
+			email="another@example.com",
+			password="test-password-123",
+		)
+		draft = Post.objects.create(
+			title="Private draft",
+			content="Draft content",
+			author=other_user,
+			category=self.category,
+			is_published=False,
+		)
+
+		response = self.client.get("/api/posts/?include_drafts=true")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			{post["id"] for post in response.data},
+			{self.post.id, draft.id},
+		)
+
 	def test_public_post_detail_loads_with_an_expired_access_token(self):
 		token = AccessToken.for_user(self.user)
 		token["exp"] = int(timezone.now().timestamp()) - 1

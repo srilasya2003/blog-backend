@@ -78,6 +78,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
 	author = serializers.PrimaryKeyRelatedField(read_only=True)
+	author_name = serializers.CharField(source="author.username", read_only=True)
 	image = serializers.ImageField(required=False, allow_null=True)
 
 	class Meta:
@@ -88,6 +89,7 @@ class PostSerializer(serializers.ModelSerializer):
 			"slug",
 			"content",
 			"author",
+			"author_name",
 			"category",
 			"image",
 			"created_at",
