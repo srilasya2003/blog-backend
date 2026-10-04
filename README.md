@@ -82,6 +82,39 @@ python manage.py createsuperuser
 
 The Django admin is available at `/admin/`.
 
+## Store post images in Cloudinary
+
+The default development setup stores uploads under `media/posts/`. To store new uploads in Cloudinary, install the updated requirements, create a Cloudinary account, then set these environment variables in the backend's local `.env` file or hosting-provider settings:
+
+```dotenv
+USE_CLOUDINARY=True
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Keep the API secret on the backend only; do not commit `.env` or put the secret in frontend code. Restart Django after setting the values. New images are stored under a per-author folder in Cloudinary, for example `media/users/42/posts/photo.jpg`, where `42` is that author's database user ID. In the Cloudinary dashboard, find them in Media Library under `media` > `users` > the user ID > `posts`. The API's `image` field contains the hosted URL. These folders organize files; they do not restrict access to a public image URL. This does not move existing files from local `media/posts/`; upload those separately if you want them in Cloudinary too. Set `USE_CLOUDINARY=False` (the default) to keep using local storage.
+
+For frontend uploads, send `FormData` rather than JSON and let the browser set the multipart content type, including its boundary:
+
+```javascript
+const formData = new FormData();
+formData.append("title", title);
+formData.append("content", content);
+formData.append("category", String(categoryId));
+formData.append("is_published", String(isPublished));
+formData.append("image", imageFile);
+
+await fetch("http://localhost:8080/api/posts/", {
+	method: "POST",
+	credentials: "include",
+	headers: { "X-CSRFToken": csrfToken },
+	body: formData,
+});
+```
+
+Do not manually set the `Content-Type` header for `FormData`. For updates, send the same form data to the post URL using `PATCH` or `PUT` as appropriate.
+
 ## Authentication
 
 ### Register

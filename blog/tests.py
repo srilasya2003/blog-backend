@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -9,10 +9,25 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
-from .models import Category, Post
+from .models import Category, Post, post_image_upload_path
 
 
 User = get_user_model()
+
+
+class PostImageUploadPathTests(SimpleTestCase):
+	def test_images_are_separated_by_author_id(self):
+		first_author = type("Author", (), {"author_id": 42})()
+		second_author = type("Author", (), {"author_id": 73})()
+
+		self.assertEqual(
+			post_image_upload_path(first_author, "photo.jpg"),
+			"users/42/posts/photo.jpg",
+		)
+		self.assertEqual(
+			post_image_upload_path(second_author, "photo.jpg"),
+			"users/73/posts/photo.jpg",
+		)
 
 
 class JWTSessionTests(TestCase):

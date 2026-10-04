@@ -27,6 +27,10 @@ def validate_image_file(value):
 		raise ValidationError("Uploaded file is not a valid image.")
 
 
+def post_image_upload_path(instance, filename):
+	return f"users/{instance.author_id}/posts/{filename}"
+
+
 class Category(models.Model):
 	name = models.CharField(max_length=100)
 	slug = models.SlugField(max_length=100, unique=True, blank=True)
@@ -46,7 +50,7 @@ class Post(models.Model):
 	author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
 	category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="posts")
 	image = models.ImageField(
-		upload_to="posts/",
+		upload_to=post_image_upload_path,
 		blank=True,
 		null=True,
 		validators=[validate_image_file],
