@@ -132,6 +132,16 @@ POST /api/register/
 ```
 
 The password is hashed before it is saved to Django's built-in user table.
+New accounts remain inactive until their email address is verified. Registration
+sends a verification link to the configured frontend at
+`/verify-email?uid=<uid>&token=<token>`; the frontend should read those query
+parameters and POST them to `/api/email-verification/confirm/`. Verification
+tokens use Django's `PASSWORD_RESET_TIMEOUT` (three days by default).
+
+To request another link, POST an email address to
+`/api/email-verification/resend/`. The response is intentionally the same
+whether or not an unverified account exists, and a matching address can receive
+at most one resend per minute.
 
 ### Login
 
@@ -213,6 +223,8 @@ Use the App Password, not the Gmail account's normal password. Restart the Djang
 
 | Method | URL | Authentication | Description |
 | --- | --- | --- | --- |
+| `POST` | `/api/email-verification/confirm/` | None | Verify an account using `uid` and `token` |
+| `POST` | `/api/email-verification/resend/` | None | Resend a verification link |
 | `GET` | `/api/categories/` | None | List categories |
 | `GET` | `/api/posts/` | None | List published posts |
 | `POST` | `/api/posts/` | Required | Create a post |

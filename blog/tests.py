@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
 from django.core import mail
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
@@ -133,6 +134,129 @@ class JWTSessionTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data[0]["id"], self.category.id)
 		self.assertEqual(response.data[0]["name"], self.category.name)
+
+
+class EmailVerificationTests(TestCase):
+	def setUp(self):
+		cache.clear()
+		self.client = APIClient()
+
+	@override_settings(
+		EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+		FRONTEND_URL="http://localhost:5173",
+	)
+	def test_registration_creates_inactive_user_and_sends_verification_link(self):
+		response = self.client.post(
+			"/api/register/",
+			{
+				"username": "new-writer",
+				"email": "new@example.com",
+				"password": "test-password-123",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		user = User.objects.get(email="new@example.com")
+		self.assertFalse(user.is_active)
+		self.assertEqual(len(mail.outbox), 1)
+		self.assertIn("/verify-email?", mail.outbox[0].body)
+		self.assertIn("uid=", mail.outbox[0].body)
+		self.assertIn("token=", mail.outbox[0].body)
+
+	def test_valid_confirmation_activates_user_and_allows_login(self):
+		user = User.objects.create_user(
+			username="pending-writer",
+			email="pending@example.com",
+			password="test-password-123",
+			is_active=False,
+		)
+		uid = urlsafe_base64_encode(force_bytes(user.pk))
+		token = default_token_generator.make_token(user)
+
+		client = APIClient(enforce_csrf_checks=True)
+		csrf_response = client.get("/api/csrf/")
+		response = client.post(
+			"/api/email-verification/confirm/",
+			{"uid": uid, "token": token},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		user.refresh_from_db()
+		self.assertTrue(user.is_active)
+		login_response = client.post(
+			"/api/login/",
+			{"email": user.email, "password": "test-password-123"},
+			format="json",
+			HTTP_X_CSRFTOKEN=csrf_response.json()["csrfToken"],
+		)
+		self.assertEqual(login_response.status_code, 200)
+
+	def test_invalid_confirmation_does_not_activate_user(self):
+		user = User.objects.create_user(
+			username="pending-writer",
+			email="pending@example.com",
+			password="test-password-123",
+			is_active=False,
+		)
+		uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+		response = self.client.post(
+			"/api/email-verification/confirm/",
+			{"uid": uid, "token": "invalid-token"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		user.refresh_from_db()
+		self.assertFalse(user.is_active)
+
+	@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+	def test_resend_sends_at_most_one_email_per_minute(self):
+		User.objects.create_user(
+			username="pending-writer",
+			email="pending@example.com",
+			password="test-password-123",
+			is_active=False,
+		)
+		payload = {"email": "pending@example.com"}
+
+		first_response = self.client.post(
+			"/api/email-verification/resend/", payload, format="json"
+		)
+		second_response = self.client.post(
+			"/api/email-verification/resend/", payload, format="json"
+		)
+		unknown_response = self.client.post(
+			"/api/email-verification/resend/",
+			{"email": "unknown@example.com"},
+			format="json",
+		)
+
+		self.assertEqual(first_response.status_code, 200)
+		self.assertEqual(first_response.data, second_response.data)
+		self.assertEqual(first_response.data, unknown_response.data)
+		self.assertEqual(len(mail.outbox), 1)
+
+	def test_unverified_user_cannot_log_in(self):
+		user = User.objects.create_user(
+			username="pending-writer",
+			email="pending@example.com",
+			password="test-password-123",
+			is_active=False,
+		)
+		client = APIClient(enforce_csrf_checks=True)
+		csrf_response = client.get("/api/csrf/")
+
+		response = client.post(
+			"/api/login/",
+			{"email": user.email, "password": "test-password-123"},
+			format="json",
+			HTTP_X_CSRFTOKEN=csrf_response.json()["csrfToken"],
+		)
+
+		self.assertEqual(response.status_code, 401)
 
 
 class PasswordResetTests(TestCase):

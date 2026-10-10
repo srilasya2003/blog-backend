@@ -56,7 +56,13 @@ class RegisterSerializer(serializers.ModelSerializer):
 		return value
 
 	def create(self, validated_data):
+		validated_data["is_active"] = False
 		return User.objects.create_user(**validated_data)
+
+
+class EmailVerificationConfirmSerializer(serializers.Serializer):
+	uid = serializers.CharField()
+	token = serializers.CharField()
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):

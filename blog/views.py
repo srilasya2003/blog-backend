@@ -1,7 +1,11 @@
+import hashlib
+from urllib.parse import urlencode
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
 from django.core.mail import send_mail
 from django.db import models
 from django.utils.encoding import force_bytes, force_str
@@ -14,6 +18,7 @@ from .authentication import OptionalJWTAuthentication
 from .models import Category, Post
 from .serializers import (
     CategorySerializer,
+    EmailVerificationConfirmSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PostSerializer,
@@ -24,6 +29,21 @@ from .serializers import (
 User = get_user_model()
 
 
+def send_verification_email(user):
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    verification_url = (
+        f"{settings.FRONTEND_URL.rstrip('/')}/verify-email?"
+        f"{urlencode({'uid': uid, 'token': token})}"
+    )
+    send_mail(
+        "Verify your Brightline account",
+        f"Open this link to verify your email address: {verification_url}",
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+    )
+
+
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
@@ -32,13 +52,74 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        send_verification_email(serializer.instance)
 
         return Response(
             {
-                "message": "Registration successful.",
+            "message": "Registration successful. Check your email to verify your account.",
                 "user": serializer.data,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class EmailVerificationConfirmView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(serializer.validated_data["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {"detail": "This verification link is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not default_token_generator.check_token(
+            user, serializer.validated_data["token"]
+        ):
+            return Response(
+                {"detail": "This verification link is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+
+        return Response({"message": "Email verified successfully."})
+
+
+class EmailVerificationResendView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"].strip().lower()
+        email_digest = hashlib.sha256(email.encode("utf-8")).hexdigest()
+        can_send = cache.add(
+            f"email-verification-resend:{email_digest}", True, timeout=60
+        )
+
+        if can_send:
+            user = User.objects.filter(email__iexact=email, is_active=False).first()
+            if user:
+                send_verification_email(user)
+
+        return Response(
+            {
+                "message": (
+                    "If an unverified account exists for this email, "
+                    "a verification link has been sent."
+                )
+            }
         )
 
 
