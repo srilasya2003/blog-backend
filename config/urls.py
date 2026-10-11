@@ -46,7 +46,7 @@ class EmailTokenObtainPairView(TokenObtainPairView):
                 max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
                 httponly=True,
                 secure=not settings.DEBUG,
-                samesite="Lax",
+                samesite=settings.COOKIE_SAMESITE,
                 path="/",
             )
 
@@ -57,7 +57,7 @@ class EmailTokenObtainPairView(TokenObtainPairView):
                 max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
                 httponly=True,
                 secure=not settings.DEBUG,
-                samesite="Lax",
+                samesite=settings.COOKIE_SAMESITE,
                 path="/api/token/refresh/",
             )
 
@@ -86,7 +86,7 @@ class CookieTokenRefreshView(TokenRefreshView):
                 max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
                 httponly=True,
                 secure=not settings.DEBUG,
-                samesite="Lax",
+                samesite=settings.COOKIE_SAMESITE,
                 path="/",
             )
 
@@ -98,7 +98,7 @@ class CookieTokenRefreshView(TokenRefreshView):
                 max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
                 httponly=True,
                 secure=not settings.DEBUG,
-                samesite="Lax",
+                samesite=settings.COOKIE_SAMESITE,
                 path="/api/token/refresh/",
             )
         return response
@@ -113,12 +113,12 @@ def logout(request):
     response.delete_cookie(
         settings.ACCESS_TOKEN_COOKIE_NAME,
         path="/",
-        samesite="Lax",
+        samesite=settings.COOKIE_SAMESITE,
     )
     response.delete_cookie(
         settings.REFRESH_TOKEN_COOKIE_NAME,
         path="/api/token/refresh/",
-        samesite="Lax",
+        samesite=settings.COOKIE_SAMESITE,
     )
     return response
 
