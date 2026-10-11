@@ -32,23 +32,30 @@ jobs:
       - name: Run tests
         run: python manage.py test
 
-      - name: Deploy to Render
-        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+
+  deploy-development:
+    name: Deploy development to Render
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Trigger Render deployment
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEV_DEPLOY_HOOK }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
-            echo "::error::Render deploy hook secret is missing."
+            echo "::error::RENDER_DEV_DEPLOY_HOOK is empty or unavailable to the development environment."
             exit 1
           fi
 
           case "$RENDER_DEPLOY_HOOK" in
             https://api.render.com/deploy/*) ;;
             *)
-              echo "::error::Render deploy hook does not have the expected URL format."
+              echo "::error::The development deploy hook does not have the expected Render URL format."
               exit 1
               ;;
           esac
 
-          echo "Deploy hook is set; requesting deployment."
+          echo "Development deploy hook is configured; requesting Render deployment."
           curl --fail --show-error --silent --request POST "$RENDER_DEPLOY_HOOK"
