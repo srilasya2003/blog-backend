@@ -9,7 +9,7 @@ A blog backend API built with Django and Django REST Framework. It uses SQLite f
 - Django REST Framework 3.18
 - Simple JWT for authentication
 - `django-cors-headers` for frontend cross-origin requests
-- SQLite
+- SQLite for local development; PostgreSQL is supported through `DATABASE_URL`
 
 ## Project structure
 
@@ -24,10 +24,10 @@ blog-backend/
 │   ├── settings.py     # Django configuration
 │   └── urls.py         # Project routes
 ├── manage.py
-├── db.sqlite3
-├── requirements.txt
-└── venv/
+└── requirements.txt
 ```
+
+The local `.env`, `db.sqlite3`, and virtual environment are not committed.
 
 ## Setup
 
@@ -215,7 +215,7 @@ POST /api/password-reset/confirm/
 }
 ```
 
-Neither reset request requires a JWT. Runtime settings are loaded from the ignored `.env` file; `.env.example` lists the available options. To send reset messages to real inboxes using Gmail, enable 2-Step Verification on the sender account and create a Google App Password. Enter the sender account and App Password into `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` in `.env` (never commit the app password). Django automatically uses Gmail SMTP when both values are filled; otherwise it prints mail to the server console.
+Neither reset request requires a JWT. Local runtime settings are loaded from the ignored `.env` file. There is currently no `.env.example`; configure these values in the hosting provider's environment-variable settings for deployment. To send reset messages to real inboxes using Gmail, enable 2-Step Verification on the sender account and create a Google App Password. Enter the sender account and App Password into `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` in `.env` (never commit the app password). Django automatically uses Gmail SMTP when both values are filled; otherwise it prints mail to the server console.
 
 Use the App Password, not the Gmail account's normal password. Restart the Django server after changing `.env`. After setup, submit `POST /api/password-reset/` again; check the Django server output for SMTP errors and check Gmail's Spam folder if it succeeds but does not appear in the inbox.
 
@@ -280,3 +280,44 @@ Inside the SQLite prompt:
 .schema blog_post
 .quit
 ```
+
+## Deployment planning
+
+The project already supports environment-based production settings, PostgreSQL through `DATABASE_URL`, and optional Cloudinary media storage. A production deployment is not configured yet: this repository does not contain a GitHub Actions workflow, `requirements.txt` does not include a production WSGI server, and static-file serving has not been configured. Do not use Django's development `runserver` as the production server.
+
+### Free hosting options
+
+These providers list free options as of October 2026. Free plans are intended for personal projects, prototypes, or learning; their limits and terms can change.
+
+| Part | Option | Notes |
+| --- | --- | --- |
+| Django API | [Render Free Web Service](https://render.com/docs/free) | Supports Python web services. Free services spin down after 15 minutes without traffic and use an ephemeral filesystem. Uploaded local files and SQLite data are lost on restarts, redeploys, and spin-down. |
+| PostgreSQL | [Neon Free](https://neon.com/pricing) | A separate PostgreSQL provider; its free plan currently includes 1 GB per project and 100 compute-hours, and compute scales to zero after inactivity. Set its connection URL as `DATABASE_URL`. |
+| Static frontend | [Cloudflare Pages](https://developers.cloudflare.com/pages/platform/limits/) | Free static hosting with Git integration; currently limited to 500 builds per month. Suitable for a frontend that builds to static files. |
+| Static/frontend app | [Vercel Hobby](https://vercel.com/pricing) or [Netlify Free](https://www.netlify.com/pricing/) | Both offer free frontend hosting with usage limits. Vercel Hobby is for personal, non-commercial use; Netlify Free uses a monthly credit allowance. |
+
+Render also offers free PostgreSQL, but its current free database expires 30 days after creation and is limited to 1 GB. Neon is a better fit for a longer-lived learning deployment, but its free tier is not a substitute for a backed-up production database. Render's free web services cannot send outbound SMTP traffic on the usual SMTP ports (25, 465, and 587), so the current SMTP-based email configuration may not work there on the free tier. Check the provider's current restrictions before choosing a mail service.
+
+### Production configuration
+
+Set these values in the backend host's environment settings. Do not commit `.env` or put backend secrets in GitHub repository files or frontend environment variables.
+
+| Variable | Production purpose |
+| --- | --- |
+| `DJANGO_SECRET_KEY` | Required secret used by Django; generate a unique value and keep it private. |
+| `DJANGO_DEBUG` | Set to `False`. The current settings default to `True` if this variable is absent. |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated backend hostnames, without `https://`. |
+| `DATABASE_URL` | PostgreSQL connection URL. If unset, the project falls back to SQLite, which is unsuitable on an ephemeral host. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins including scheme, such as `https://example.com`. |
+| `CSRF_TRUSTED_ORIGINS` | Comma-separated trusted frontend origins including scheme. |
+| `FRONTEND_URL` | Public frontend base URL used for verification and password-reset links. |
+| `USE_CLOUDINARY` and `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Set `USE_CLOUDINARY=True` and provide the credentials to persist uploaded images outside the API container. Keep the API secret on the backend only. |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | SMTP configuration for verification and password-reset messages. Without credentials, Django uses the console email backend. |
+
+### Browser authentication and domains
+
+The access and refresh JWT cookies currently use `SameSite=Lax`; in production they also use `Secure` when `DJANGO_DEBUG=False`. The browser may not send these cookies when the frontend and API use unrelated provider domains. For example, `project.vercel.app` and `project.onrender.com` are different sites. Prefer frontend and API hostnames under the same custom domain, such as `www.example.com` and `api.example.com`, and configure the exact frontend origin in both CORS and CSRF settings. If unrelated domains are required, cookie and CSRF behavior must be deliberately updated and tested over HTTPS before deployment.
+
+### GitHub Actions status
+
+No GitHub Actions workflow has been added. The intended deployment branch and hosting providers have not been selected, and the frontend source is not part of this backend repository. Once those choices are made, the workflow can be written and tested step by step. Store deploy tokens and other credentials as GitHub Actions secrets; keep application runtime secrets in the hosting provider's environment settings.
